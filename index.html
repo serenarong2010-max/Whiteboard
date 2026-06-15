@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whiteboard - Digital Workspace</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Theme Toggle -->
+    <button id="theme-toggle" class="theme-toggle" title="Toggle Theme">
+        <span class="theme-icon">🌙</span>
+    </button>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h1>⬜ Whiteboard</h1>
+            </div>
+            
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-view="whiteboard" title="Whiteboard">
+                    <span class="icon">✏️</span>
+                    <span class="label">Whiteboard</span>
+                </button>
+                <button class="nav-btn" data-view="schedule" title="Schedule">
+                    <span class="icon">📅</span>
+                    <span class="label">Schedule</span>
+                </button>
+                <button class="nav-btn" data-view="notes" title="Notes">
+                    <span class="icon">📝</span>
+                    <span class="label">Notes</span>
+                </button>
+                <button class="nav-btn" data-view="ideas" title="Ideas">
+                    <span class="icon">💡</span>
+                    <span class="label">Ideas</span>
+                </button>
+                <button class="nav-btn" data-view="visuals" title="Visuals">
+                    <span class="icon">🖼️</span>
+                    <span class="label">Visuals</span>
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Whiteboard View -->
+            <div id="whiteboard-view" class="view active">
+                <div class="toolbar">
+                    <button class="tool-btn active" data-tool="pen" title="Pen">
+                        <span>✒️</span>
+                    </button>
+                    <button class="tool-btn" data-tool="text" title="Text">
+                        <span>🔤</span>
+                    </button>
+                    <button class="tool-btn" data-tool="eraser" title="Eraser">
+                        <span>🧹</span>
+                    </button>
+                    <button class="tool-btn" data-tool="shape" title="Shape">
+                        <span>⬜</span>
+                    </button>
+                    <div class="tool-divider"></div>
+                    <input type="color" id="color-picker" value="#000000" title="Color">
+                    <input type="range" id="brush-size" min="1" max="20" value="3" title="Brush Size">
+                    <div class="tool-divider"></div>
+                    <button class="tool-btn" id="clear-canvas" title="Clear Canvas">
+                        <span>🗑️</span>
+                    </button>
+                    <button class="tool-btn" id="save-canvas" title="Save">
+                        <span>💾</span>
+                    </button>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="whiteboard-canvas"></canvas>
+                    <div id="text-input-container" class="text-input-container" style="display: none;">
+                        <textarea id="text-input" placeholder="Type here..."></textarea>
+                        <button id="text-submit" class="btn-primary">Add Text</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schedule View -->
+            <div id="schedule-view" class="view">
+                <div class="view-header">
+                    <h2>Schedule Management</h2>
+                    <button id="add-event-btn" class="btn-primary">+ Add Event</button>
+                </div>
+                <div class="schedule-container">
+                    <div class="calendar-header">
+                        <button id="prev-month" class="btn-nav">◀</button>
+                        <h3 id="current-month-year"></h3>
+                        <button id="next-month" class="btn-nav">▶</button>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid"></div>
+                    <div class="events-list" id="events-list">
+                        <h3>Upcoming Events</h3>
+                        <div id="events-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notes View -->
+            <div id="notes-view" class="view">
+                <div class="view-header">
+                    <h2>Client Notes</h2>
+                    <button id="add-note-btn" class="btn-primary">+ New Note</button>
+                </div>
+                <div class="notes-container">
+                    <div class="notes-sidebar">
+                        <input type="text" id="search-notes" placeholder="Search notes..." class="search-input">
+                        <div id="notes-list" class="notes-list"></div>
+                    </div>
+                    <div class="note-editor">
+                        <input type="text" id="note-title" placeholder="Note Title" class="note-title-input">
+                        <input type="date" id="note-date" class="note-date-input">
+                        <textarea id="note-content" placeholder="Write your notes here..."></textarea>
+                        <div class="note-actions">
+                            <button id="save-note" class="btn-primary">Save Note</button>
+                            <button id="delete-note" class="btn-danger">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ideas View -->
+            <div id="ideas-view" class="view">
+                <div class="view-header">
+                    <h2>Idea Board</h2>
+                    <button id="add-idea-btn" class="btn-primary">+ Add Idea</button>
+                </div>
+                <div class="ideas-container">
+                    <div class="ideas-filters">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="active">Active</button>
+                        <button class="filter-btn" data-filter="archived">Archived</button>
+                    </div>
+                    <div id="ideas-grid" class="ideas-grid"></div>
+                </div>
+            </div>
+
+            <!-- Visuals View -->
+            <div id="visuals-view" class="view">
+                <div class="view-header">
+                    <h2>Visual References</h2>
+                    <button id="upload-visual-btn" class="btn-primary">+ Upload Image</button>
+                </div>
+                <div class="visuals-container">
+                    <div id="visuals-grid" class="visuals-grid"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Events -->
+    <div id="event-modal" class="modal">
+        <div class="modal-content">
+            <h3>Add/Edit Event</h3>
+            <input type="text" id="event-title" placeholder="Event Title" class="modal-input">
+            <input type="date" id="event-date" class="modal-input">
+            <input type="time" id="event-time" class="modal-input">
+            <textarea id="event-description" placeholder="Description" class="modal-textarea"></textarea>
+            <div class="modal-actions">
+                <button id="save-event" class="btn-primary">Save Event</button>
+                <button id="cancel-event" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Ideas -->
+    <div id="idea-modal" class="modal">
+        <div class="modal-content">
+            <h3>Add/Edit Idea</h3>
+            <input type="text" id="idea-title" placeholder="Idea Title" class="modal-input">
+            <textarea id="idea-description" placeholder="Describe your idea..." class="modal-textarea"></textarea>
+            <select id="idea-priority" class="modal-input">
+                <option value="low">Low Priority</option>
+                <option value="medium">Medium Priority</option>
+                <option value="high">High Priority</option>
+            </select>
+            <div class="modal-actions">
+                <button id="save-idea" class="btn-primary">Save Idea</button>
+                <button id="cancel-idea" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Visual Preview -->
+    <div id="visual-modal" class="modal">
+        <div class="modal-content modal-large">
+            <img id="visual-preview" src="" alt="Visual Reference">
+            <p id="visual-caption"></p>
+            <button id="close-visual" class="btn-secondary">Close</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
