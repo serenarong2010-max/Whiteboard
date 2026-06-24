@@ -17,11 +17,31 @@ const state = {
     // Notes
     notes: [],
     currentNoteId: null,
+    noteCategories: [],
+    noteFilterCategory: 'all',
     // Ideas
     ideas: [],
     ideaFilter: 'all',
     // Visuals
     visuals: []
+};
+
+const NOTE_DEFAULT_CATEGORIES = [
+    { id: 'general', label: 'General', color: '#F8E08C', builtIn: true },
+    { id: 'idea', label: 'Idea', color: '#F7A6D9', builtIn: true },
+    { id: 'research', label: 'Research', color: '#8ED1FC', builtIn: true },
+    { id: 'action', label: 'Action', color: '#A7E8B4', builtIn: true },
+    { id: 'reference', label: 'Reference', color: '#C8B6FF', builtIn: true }
+];
+
+const CATEGORY_ORDER = ['general', 'idea', 'research', 'action', 'reference'];
+
+const CATEGORY_META = {
+    general: { label: 'General', color: '#F8E08C' },
+    idea: { label: 'Idea', color: '#F7A6D9' },
+    research: { label: 'Research', color: '#8ED1FC' },
+    action: { label: 'Action', color: '#A7E8B4' },
+    reference: { label: 'Reference', color: '#C8B6FF' }
 };
 
 // ========================================
@@ -87,6 +107,9 @@ function switchView(view) {
     state.currentView = view;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(`${view}-view`).classList.add('active');
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === view);
+    });
 }
 
 // ========================================
@@ -208,6 +231,8 @@ function initWhiteboard() {
         saveCanvas();
         showNotification('Canvas saved!');
     });
+
+    document.getElementById('save-board').addEventListener('click', saveBoardToIdeas);
 }
 
 function saveCanvas() {
@@ -297,9 +322,11 @@ function renderCalendar() {
                        year === today.getFullYear();
         
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const hasEvent = state.events.some(e => e.date === dateStr);
+        const dayEntries = getCalendarEntries(dateStr);
+        const hasEvent = dayEntries.some(entry => entry.type === 'event');
+        const hasNote = dayEntries.some(entry => entry.type === 'note');
         
-        const dayEl = createDayElement(day, false, month, year, isToday, hasEvent, dateStr);
+        const dayEl = createDayElement(day, false, month, year, isToday, hasEvent, hasNote, dateStr, dayEntries);
         grid.appendChild(dayEl);
     }
     
@@ -314,14 +341,44 @@ function renderCalendar() {
     renderEvents();
 }
 
-function createDayElement(day, isOtherMonth, month, year, isToday = false, hasEvent = false, dateStr = null) {
+function createDayElement(day, isOtherMonth, month, year, isToday = false, hasEvent = false, hasNote = false, dateStr = null, entries = []) {
     const dayEl = document.createElement('div');
     dayEl.className = 'calendar-day';
-    dayEl.textContent = day;
+    dayEl.innerHTML = `<span class="calendar-day-number">${day}</span>`;
     
     if (isOtherMonth) dayEl.classList.add('other-month');
     if (isToday) dayEl.classList.add('today');
     if (hasEvent) dayEl.classList.add('has-event');
+    if (hasNote) dayEl.classList.add('has-note');
+    if (!isOtherMonth && entries.length > 0) {
+        const list = document.createElement('div');
+        list.className = 'calendar-entry-list';
+        entries.slice(0, 3).forEach(entry => {
+            const pill = document.createElement('button');
+            pill.type = 'button';
+            pill.className = `calendar-entry-pill ${entry.type}`;
+            pill.style.background = entry.color;
+            pill.title = entry.type === 'note'
+                ? `${entry.title} · ${getNoteCategoryMeta(entry.category).label}`
+                : entry.title;
+            pill.textContent = entry.title;
+            if (entry.type === 'note') {
+                pill.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    loadNote(entry.id);
+                    switchView('notes');
+                });
+            }
+            list.appendChild(pill);
+        });
+        if (entries.length > 3) {
+            const more = document.createElement('div');
+            more.className = 'calendar-entry-more';
+            more.textContent = `+${entries.length - 3} more`;
+            list.appendChild(more);
+        }
+        dayEl.appendChild(list);
+    }
     
     if (dateStr && !isOtherMonth) {
         dayEl.addEventListener('click', () => {
@@ -337,32 +394,48 @@ function renderEvents() {
     const container = document.getElementById('events-container');
     container.innerHTML = '';
     
-    const sortedEvents = [...state.events].sort((a, b) => {
+    const agendaEntries = getAgendaEntries().sort((a, b) => {
         return new Date(a.date + ' ' + (a.time || '00:00')) - new Date(b.date + ' ' + (b.time || '00:00'));
     });
     
-    const upcoming = sortedEvents.filter(e => new Date(e.date) >= new Date().setHours(0, 0, 0, 0));
+    const upcoming = agendaEntries.filter(e => new Date(e.date) >= new Date().setHours(0, 0, 0, 0));
     
     if (upcoming.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-secondary);">No upcoming events</p>';
+        container.innerHTML = '<p style="color: var(--text-secondary);">No upcoming events or scheduled notes</p>';
         return;
     }
     
     upcoming.forEach(event => {
         const eventEl = document.createElement('div');
-        eventEl.className = 'event-item';
-        eventEl.innerHTML = `
-            <h4>${event.title}</h4>
-            <p>📅 ${formatDate(event.date)}${event.time ? ' ⏰ ' + event.time : ''}</p>
-            ${event.description ? '<p>' + event.description + '</p>' : ''}
-        `;
-        eventEl.addEventListener('click', () => {
-            if (confirm('Delete this event?')) {
-                state.events = state.events.filter(e => e.id !== event.id);
-                saveToStorage();
-                renderCalendar();
-            }
-        });
+        eventEl.className = event.type === 'note' ? 'event-item calendar-note-item' : 'event-item';
+        const meta = event.type === 'note' ? getNoteCategoryMeta(event.category) : null;
+        eventEl.style.borderLeftColor = event.type === 'note' ? meta.color : 'var(--accent-primary)';
+        eventEl.innerHTML = event.type === 'note'
+            ? `
+                <h4>${escapeHtml(event.title || 'Untitled Note')}</h4>
+                <p>📌 ${formatDate(event.date)}${event.time ? ' ⏰ ' + event.time : ''}</p>
+                <p>${escapeHtml(meta.label)} note</p>
+              `
+            : `
+                <h4>${escapeHtml(event.title)}</h4>
+                <p>📅 ${formatDate(event.date)}${event.time ? ' ⏰ ' + event.time : ''}</p>
+                ${event.description ? '<p>' + escapeHtml(event.description) + '</p>' : ''}
+              `;
+
+        if (event.type === 'event') {
+            eventEl.addEventListener('click', () => {
+                if (confirm('Delete this event?')) {
+                    state.events = state.events.filter(e => e.id !== event.id);
+                    saveToStorage();
+                    renderCalendar();
+                }
+            });
+        } else {
+            eventEl.addEventListener('click', () => {
+                loadNote(event.id);
+                switchView('notes');
+            });
+        }
         container.appendChild(eventEl);
     });
 }
@@ -418,13 +491,46 @@ function formatDate(dateStr) {
 // ========================================
 
 function initNotes() {
+    syncNoteCategoryUI();
     renderNotesList();
     
     document.getElementById('add-note-btn').addEventListener('click', () => {
         createNewNote();
     });
+
+    document.getElementById('add-note-category-btn').addEventListener('click', addNoteCategory);
     
     document.getElementById('save-note').addEventListener('click', saveNote);
+
+    document.getElementById('note-category').addEventListener('change', (e) => {
+        if (!state.currentNoteId) return;
+        const note = state.notes.find(n => n.id === state.currentNoteId);
+        if (!note) return;
+        note.category = e.target.value;
+        saveToStorage();
+        syncNoteCategoryUI();
+        renderNotesList(document.getElementById('search-notes').value);
+    });
+
+    document.getElementById('place-note-calendar').addEventListener('click', scheduleCurrentNote);
+
+    document.getElementById('clear-note-calendar').addEventListener('click', () => {
+        if (!state.currentNoteId) {
+            alert('Please create or select a note first');
+            return;
+        }
+
+        const note = state.notes.find(n => n.id === state.currentNoteId);
+        if (!note) return;
+
+        note.scheduledDate = '';
+        note.scheduledTime = '';
+        note.updatedAt = Date.now();
+        saveToStorage();
+        loadNote(note.id);
+        renderCalendar();
+        showNotification('Removed from calendar');
+    });
     
     document.getElementById('delete-note').addEventListener('click', () => {
         if (state.currentNoteId && confirm('Delete this note?')) {
@@ -447,26 +553,36 @@ function renderNotesList(searchTerm = '') {
     
     const filtered = state.notes.filter(note => {
         if (!searchTerm) return true;
-        return note.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               note.content.toLowerCase().includes(searchTerm.toLowerCase());
+        const title = (note.title || '').toLowerCase();
+        const content = (note.content || '').toLowerCase();
+        return title.includes(searchTerm.toLowerCase()) ||
+               content.includes(searchTerm.toLowerCase());
     });
-    
-    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    if (filtered.length === 0) {
+
+    const categoryFiltered = state.noteFilterCategory === 'all'
+        ? filtered
+        : filtered.filter(note => (note.category || 'general') === state.noteFilterCategory);
+
+    categoryFiltered.sort((a, b) => {
+        const categoryDiff = getNoteCategoryMeta(a.category).label.localeCompare(getNoteCategoryMeta(b.category).label);
+        if (categoryDiff !== 0) return categoryDiff;
+        return new Date(b.updatedAt || b.createdAt || b.date || 0) - new Date(a.updatedAt || a.createdAt || a.date || 0);
+    });
+
+    if (categoryFiltered.length === 0) {
         list.innerHTML = '<p style="color: var(--text-secondary); padding: 20px; text-align: center;">No notes yet</p>';
         return;
     }
-    
-    filtered.forEach(note => {
+
+    categoryFiltered.forEach(note => {
         const noteEl = document.createElement('div');
-        noteEl.className = 'note-item';
+        const categoryMeta = getNoteCategoryMeta(note.category);
+        noteEl.className = 'note-item note-blob';
+        noteEl.style.setProperty('--sticky-color', categoryMeta.color);
         if (note.id === state.currentNoteId) noteEl.classList.add('active');
-        
-        noteEl.innerHTML = `
-            <h4>${note.title || 'Untitled'}</h4>
-            <p>${formatDate(note.date)}</p>
-        `;
+        noteEl.style.setProperty('--sticky-rotate', `${((note.id || 0) % 5) - 2}deg`);
+        noteEl.title = `${note.title || 'Untitled'} · ${categoryMeta.label}`;
+        noteEl.innerHTML = `<h4>${escapeHtml(note.title || 'Untitled')}</h4>`;
         
         noteEl.addEventListener('click', () => {
             loadNote(note.id);
@@ -477,16 +593,25 @@ function renderNotesList(searchTerm = '') {
 }
 
 function createNewNote() {
+    const defaultCategory = state.noteFilterCategory !== 'all'
+        ? state.noteFilterCategory
+        : (state.noteCategories[0]?.id || 'general');
     const note = {
         id: Date.now(),
         title: '',
         content: '',
-        date: new Date().toISOString().split('T')[0]
+        date: new Date().toISOString().split('T')[0],
+        category: defaultCategory,
+        scheduledDate: '',
+        scheduledTime: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
     };
     
     state.notes.push(note);
     state.currentNoteId = note.id;
     saveToStorage();
+    syncNoteCategoryUI();
     renderNotesList();
     loadNote(note.id);
 }
@@ -500,8 +625,12 @@ function loadNote(id) {
     document.getElementById('note-title').value = note.title;
     document.getElementById('note-content').value = note.content;
     document.getElementById('note-date').value = note.date;
+    document.getElementById('note-category').value = note.category || 'general';
+    document.getElementById('note-calendar-date').value = note.scheduledDate || '';
+    document.getElementById('note-calendar-time').value = note.scheduledTime || '';
     
     renderNotesList(document.getElementById('search-notes').value);
+    syncNoteCategoryUI();
 }
 
 function saveNote() {
@@ -516,9 +645,15 @@ function saveNote() {
     note.title = document.getElementById('note-title').value.trim();
     note.content = document.getElementById('note-content').value;
     note.date = document.getElementById('note-date').value;
+    note.category = document.getElementById('note-category').value;
+    note.scheduledDate = document.getElementById('note-calendar-date').value;
+    note.scheduledTime = document.getElementById('note-calendar-time').value;
+    note.updatedAt = Date.now();
     
     saveToStorage();
+    syncNoteCategoryUI();
     renderNotesList(document.getElementById('search-notes').value);
+    renderCalendar();
     showNotification('Note saved!');
 }
 
@@ -526,6 +661,190 @@ function clearNoteEditor() {
     document.getElementById('note-title').value = '';
     document.getElementById('note-content').value = '';
     document.getElementById('note-date').value = '';
+    document.getElementById('note-calendar-date').value = '';
+    document.getElementById('note-calendar-time').value = '';
+    document.getElementById('note-category').value = state.noteCategories[0]?.id || 'general';
+}
+
+function scheduleCurrentNote() {
+    if (!state.currentNoteId) {
+        alert('Please create or select a note first');
+        return;
+    }
+
+    const note = state.notes.find(n => n.id === state.currentNoteId);
+    if (!note) return;
+
+    const date = document.getElementById('note-calendar-date').value;
+    const time = document.getElementById('note-calendar-time').value;
+
+    if (!date) {
+        alert('Pick a calendar date first');
+        return;
+    }
+
+    note.scheduledDate = date;
+    note.scheduledTime = time;
+    note.updatedAt = Date.now();
+    saveToStorage();
+    renderCalendar();
+    renderNotesList(document.getElementById('search-notes').value);
+    showNotification('Note placed on the calendar');
+}
+
+function addNoteCategory() {
+    const nameInput = document.getElementById('new-note-category-name');
+    const colorInput = document.getElementById('new-note-category-color');
+    const label = nameInput.value.trim();
+
+    if (!label) {
+        alert('Enter a category name');
+        return;
+    }
+
+    const existingIds = new Set(state.noteCategories.map(category => category.id));
+    let id = createCategoryId(label);
+    let suffix = 2;
+    while (existingIds.has(id)) {
+        id = `${createCategoryId(label)}-${suffix}`;
+        suffix += 1;
+    }
+
+    state.noteCategories.push({
+        id,
+        label,
+        color: colorInput.value || '#F8E08C',
+        builtIn: false
+    });
+
+    nameInput.value = '';
+    saveToStorage();
+    syncNoteCategoryUI();
+    renderNotesList(document.getElementById('search-notes').value);
+    showNotification('Category added');
+}
+
+function syncNoteCategoryUI() {
+    state.noteCategories = normalizeNoteCategories(state.noteCategories);
+    renderNoteCategorySelect(document.getElementById('note-category'));
+    renderNoteCategoryFilters();
+}
+
+function renderNoteCategorySelect(selectEl) {
+    if (!selectEl) return;
+    const selected = selectEl.value || state.currentNoteId && state.notes.find(n => n.id === state.currentNoteId)?.category || 'general';
+    selectEl.innerHTML = state.noteCategories.map(category => {
+        return `<option value="${category.id}">${escapeHtml(category.label)}</option>`;
+    }).join('');
+    selectEl.value = state.noteCategories.some(category => category.id === selected) ? selected : (state.noteCategories[0]?.id || 'general');
+}
+
+function renderNoteCategoryFilters() {
+    const container = document.getElementById('note-category-filters');
+    if (!container) return;
+
+    const counts = state.noteCategories.reduce((acc, category) => {
+        acc[category.id] = state.notes.filter(note => (note.category || 'general') === category.id).length;
+        return acc;
+    }, {});
+
+    container.innerHTML = [
+        `<button class="note-filter-chip ${state.noteFilterCategory === 'all' ? 'active' : ''}" data-category="all">All <span>${state.notes.length}</span></button>`,
+        ...state.noteCategories.map(category => {
+            return `<button class="note-filter-chip ${state.noteFilterCategory === category.id ? 'active' : ''}" data-category="${category.id}" style="--chip-color:${category.color}">
+                ${escapeHtml(category.label)} <span>${counts[category.id] || 0}</span>
+            </button>`;
+        })
+    ].join('');
+
+    container.querySelectorAll('.note-filter-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.noteFilterCategory = btn.dataset.category;
+            renderNoteCategoryFilters();
+            renderNotesList(document.getElementById('search-notes').value);
+        });
+    });
+}
+
+function normalizeNoteCategories(categories = []) {
+    const custom = Array.isArray(categories) ? categories.filter(Boolean) : [];
+    const combined = [...NOTE_DEFAULT_CATEGORIES, ...custom];
+    const seen = new Set();
+
+    return combined.filter(category => {
+        if (!category || !category.id || seen.has(category.id)) return false;
+        seen.add(category.id);
+        return true;
+    }).map(category => ({
+        ...category,
+        label: category.label || category.id,
+        color: category.color || '#F8E08C',
+        builtIn: Boolean(category.builtIn)
+    }));
+}
+
+function getNoteCategoryMeta(categoryId) {
+    return state.noteCategories.find(category => category.id === categoryId) || state.noteCategories[0] || NOTE_DEFAULT_CATEGORIES[0];
+}
+
+function createCategoryId(label) {
+    return label
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'category';
+}
+
+function getCalendarEntries(dateStr) {
+    const scheduledNotes = state.notes
+        .filter(note => note.scheduledDate === dateStr)
+        .map(note => ({
+            id: note.id,
+            type: 'note',
+            title: note.title || 'Untitled Note',
+            date: note.scheduledDate,
+            time: note.scheduledTime || '',
+            category: note.category || 'general',
+            color: getNoteCategoryMeta(note.category).color
+        }));
+
+    const events = state.events
+        .filter(event => event.date === dateStr)
+        .map(event => ({
+            id: event.id,
+            type: 'event',
+            title: event.title,
+            date: event.date,
+            time: event.time || '',
+            color: 'var(--accent-primary)',
+            description: event.description || ''
+        }));
+
+    return [...scheduledNotes, ...events].sort((a, b) => {
+        return (a.time || '').localeCompare(b.time || '');
+    });
+}
+
+function getAgendaEntries() {
+    const scheduledNotes = state.notes
+        .filter(note => note.scheduledDate)
+        .map(note => ({
+            id: note.id,
+            type: 'note',
+            title: note.title || 'Untitled Note',
+            date: note.scheduledDate,
+            time: note.scheduledTime || '',
+            category: note.category || 'general',
+            color: getNoteCategoryMeta(note.category).color
+        }));
+
+    const events = state.events.map(event => ({
+        ...event,
+        type: 'event',
+        color: 'var(--accent-primary)'
+    }));
+
+    return [...scheduledNotes, ...events];
 }
 
 // ========================================
@@ -563,7 +882,11 @@ function renderIdeas() {
         filtered = state.ideas.filter(i => i.archived);
     }
     
-    filtered.sort((a, b) => b.createdAt - a.createdAt);
+    filtered.sort((a, b) => {
+        const categoryDiff = CATEGORY_ORDER.indexOf(a.category || 'general') - CATEGORY_ORDER.indexOf(b.category || 'general');
+        if (categoryDiff !== 0) return categoryDiff;
+        return b.createdAt - a.createdAt;
+    });
     
     if (filtered.length === 0) {
         grid.innerHTML = '<p style="color: var(--text-secondary); grid-column: 1/-1; text-align: center; padding: 40px;">No ideas yet</p>';
@@ -572,11 +895,25 @@ function renderIdeas() {
     
     filtered.forEach(idea => {
         const ideaEl = document.createElement('div');
-        ideaEl.className = 'idea-card';
+        const categoryMeta = getCategoryMeta(idea.category);
+        ideaEl.className = 'idea-card sticky-tile';
+        ideaEl.style.setProperty('--sticky-color', categoryMeta.color);
+        ideaEl.style.setProperty('--sticky-rotate', `${((idea.id || 0) % 5) - 2}deg`);
         ideaEl.innerHTML = `
-            <h3>${idea.title}</h3>
-            <p>${idea.description}</p>
-            <span class="idea-priority ${idea.priority}">${idea.priority.toUpperCase()}</span>
+            <div class="sticky-card-header">
+                <span class="sticky-label">${escapeHtml(categoryMeta.label)}</span>
+                ${idea.source === 'whiteboard' ? '<span class="sticky-source">Board</span>' : ''}
+            </div>
+            <h3>${escapeHtml(idea.title)}</h3>
+            <p>${escapeHtml(idea.description || 'No description yet')}</p>
+            ${idea.snapshot ? `<img class="idea-snapshot" src="${idea.snapshot}" alt="${escapeHtml(idea.title)} snapshot">` : ''}
+            <span class="idea-priority ${idea.priority}">${escapeHtml(idea.priority.toUpperCase())}</span>
+            <label class="sticky-category-control">
+                <span>Category</span>
+                <select class="idea-category-select">
+                    ${renderCategoryOptions(idea.category)}
+                </select>
+            </label>
             <div class="idea-actions">
                 <button class="btn-secondary" onclick="toggleArchiveIdea(${idea.id})">
                     ${idea.archived ? 'Unarchive' : 'Archive'}
@@ -584,6 +921,13 @@ function renderIdeas() {
                 <button class="btn-danger" onclick="deleteIdea(${idea.id})">Delete</button>
             </div>
         `;
+        const select = ideaEl.querySelector('.idea-category-select');
+        select.value = idea.category || 'general';
+        select.addEventListener('change', (e) => {
+            idea.category = e.target.value;
+            saveToStorage();
+            renderIdeas();
+        });
         grid.appendChild(ideaEl);
     });
 }
@@ -593,6 +937,7 @@ function openIdeaModal() {
     document.getElementById('idea-title').value = '';
     document.getElementById('idea-description').value = '';
     document.getElementById('idea-priority').value = 'medium';
+    document.getElementById('idea-category').value = 'idea';
 }
 
 function closeIdeaModal() {
@@ -615,7 +960,9 @@ function saveIdea() {
         description,
         priority,
         archived: false,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        category: document.getElementById('idea-category').value,
+        source: 'manual'
     };
     
     state.ideas.push(idea);
@@ -632,6 +979,29 @@ function toggleArchiveIdea(id) {
         saveToStorage();
         renderIdeas();
     }
+}
+
+function saveBoardToIdeas() {
+    const canvas = document.getElementById('whiteboard-canvas');
+    saveCanvas();
+
+    const boardIdea = {
+        id: Date.now(),
+        title: `Whiteboard Snapshot ${new Date().toLocaleDateString('en-US')}`,
+        description: 'Captured from the whiteboard and saved as a sticky note.',
+        priority: 'medium',
+        archived: false,
+        createdAt: Date.now(),
+        category: 'general',
+        source: 'whiteboard',
+        snapshot: canvas.toDataURL()
+    };
+
+    state.ideas.push(boardIdea);
+    saveToStorage();
+    renderIdeas();
+    switchView('ideas');
+    showNotification('Board saved to Ideas!');
 }
 
 function deleteIdea(id) {
@@ -728,6 +1098,7 @@ function openVisualModal(visual) {
 function saveToStorage() {
     localStorage.setItem('whiteboard-events', JSON.stringify(state.events));
     localStorage.setItem('whiteboard-notes', JSON.stringify(state.notes));
+    localStorage.setItem('whiteboard-note-categories', JSON.stringify(state.noteCategories));
     localStorage.setItem('whiteboard-ideas', JSON.stringify(state.ideas));
     localStorage.setItem('whiteboard-visuals', JSON.stringify(state.visuals));
 }
@@ -735,11 +1106,30 @@ function saveToStorage() {
 function loadFromStorage() {
     try {
         state.events = JSON.parse(localStorage.getItem('whiteboard-events')) || [];
-        state.notes = JSON.parse(localStorage.getItem('whiteboard-notes')) || [];
-        state.ideas = JSON.parse(localStorage.getItem('whiteboard-ideas')) || [];
+        state.noteCategories = normalizeNoteCategories(JSON.parse(localStorage.getItem('whiteboard-note-categories')) || []);
+        state.notes = (JSON.parse(localStorage.getItem('whiteboard-notes')) || []).map(note => ({
+            ...note,
+            category: note.category || 'general',
+            date: note.date || new Date().toISOString().split('T')[0],
+            scheduledDate: note.scheduledDate || '',
+            scheduledTime: note.scheduledTime || '',
+            createdAt: note.createdAt || Date.now(),
+            updatedAt: note.updatedAt || Date.now()
+        }));
+        state.ideas = (JSON.parse(localStorage.getItem('whiteboard-ideas')) || []).map(idea => ({
+            ...idea,
+            category: idea.category || 'general',
+            source: idea.source || 'manual',
+            priority: idea.priority || 'medium',
+            createdAt: idea.createdAt || Date.now()
+        }));
         state.visuals = JSON.parse(localStorage.getItem('whiteboard-visuals')) || [];
+        if (!state.noteCategories.length) {
+            state.noteCategories = normalizeNoteCategories();
+        }
     } catch (e) {
         console.error('Error loading from storage:', e);
+        state.noteCategories = normalizeNoteCategories();
     }
 }
 
@@ -769,6 +1159,26 @@ function showNotification(message) {
         notification.style.animation = 'slideOut 0.3s ease';
         setTimeout(() => notification.remove(), 300);
     }, 2000);
+}
+
+function getCategoryMeta(category) {
+    return CATEGORY_META[category] || CATEGORY_META.general;
+}
+
+function renderCategoryOptions(selectedCategory = 'general') {
+    return CATEGORY_ORDER.map(category => {
+        const meta = getCategoryMeta(category);
+        return `<option value="${category}" ${category === selectedCategory ? 'selected' : ''}>${escapeHtml(meta.label)}</option>`;
+    }).join('');
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Add animation styles

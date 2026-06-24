@@ -71,6 +71,9 @@
                     <button class="tool-btn" id="save-canvas" title="Save">
                         <span>💾</span>
                     </button>
+                    <button class="tool-btn" id="save-board" title="Save to Ideas">
+                        <span>💡</span>
+                    </button>
                 </div>
                 <div class="canvas-container">
                     <canvas id="whiteboard-canvas"></canvas>
@@ -95,7 +98,7 @@
                     </div>
                     <div class="calendar-grid" id="calendar-grid"></div>
                     <div class="events-list" id="events-list">
-                        <h3>Upcoming Events</h3>
+                        <h3>Upcoming Events &amp; Notes</h3>
                         <div id="events-container"></div>
                     </div>
                 </div>
@@ -109,12 +112,32 @@
                 </div>
                 <div class="notes-container">
                     <div class="notes-sidebar">
+                        <div class="note-category-manager">
+                            <div class="note-category-create">
+                                <input type="text" id="new-note-category-name" placeholder="New category" class="search-input">
+                                <input type="color" id="new-note-category-color" value="#F8E08C" title="Category Color">
+                                <button id="add-note-category-btn" class="btn-primary">Add</button>
+                            </div>
+                            <div id="note-category-filters" class="note-category-filters"></div>
+                        </div>
                         <input type="text" id="search-notes" placeholder="Search notes..." class="search-input">
                         <div id="notes-list" class="notes-list"></div>
                     </div>
                     <div class="note-editor">
                         <input type="text" id="note-title" placeholder="Note Title" class="note-title-input">
                         <input type="date" id="note-date" class="note-date-input">
+                        <select id="note-category" class="note-category-input"></select>
+                        <div class="note-schedule-panel">
+                            <h3>Calendar Placement</h3>
+                            <div class="note-schedule-fields">
+                                <input type="date" id="note-calendar-date" class="note-date-input">
+                                <input type="time" id="note-calendar-time" class="note-date-input">
+                            </div>
+                            <div class="note-schedule-actions">
+                                <button id="place-note-calendar" class="btn-primary">Place on Calendar</button>
+                                <button id="clear-note-calendar" class="btn-secondary">Remove</button>
+                            </div>
+                        </div>
                         <textarea id="note-content" placeholder="Write your notes here..."></textarea>
                         <div class="note-actions">
                             <button id="save-note" class="btn-primary">Save Note</button>
@@ -178,6 +201,13 @@
                 <option value="low">Low Priority</option>
                 <option value="medium">Medium Priority</option>
                 <option value="high">High Priority</option>
+            </select>
+            <select id="idea-category" class="modal-input">
+                <option value="general">General</option>
+                <option value="idea">Idea</option>
+                <option value="research">Research</option>
+                <option value="action">Action</option>
+                <option value="reference">Reference</option>
             </select>
             <div class="modal-actions">
                 <button id="save-idea" class="btn-primary">Save Idea</button>
